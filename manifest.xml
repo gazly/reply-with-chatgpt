@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Reply with ChatGPT: Outlook add-in manifest (XML, MailApp).
+
+  This file points at https://localhost:3000 for local testing.
+  For the hosted version, run "npm run manifest" with your site URL
+  (see README). It writes manifest.prod.xml with that URL filled in.
+-->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
+           xsi:type="MailApp">
+  <Id>dfe9e20a-4e7e-4234-85fc-49da85bd8cec</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Personal</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Reply with ChatGPT"/>
+  <Description DefaultValue="Builds a prompt from the open email for you to paste into ChatGPT, then turns ChatGPT's answer into a reply draft. Never sends email."/>
+  <IconUrl DefaultValue="https://localhost:3000/assets/icon-64.png"/>
+  <HighResolutionIconUrl DefaultValue="https://localhost:3000/assets/icon-128.png"/>
+  <SupportUrl DefaultValue="https://localhost:3000/support.html"/>
+  <Hosts>
+    <Host Name="Mailbox"/>
+  </Hosts>
+  <Requirements>
+    <Sets>
+      <Set Name="Mailbox" MinVersion="1.5"/>
+    </Sets>
+  </Requirements>
+  <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="https://localhost:3000/taskpane.html"/>
+        <RequestedHeight>250</RequestedHeight>
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+  <Permissions>ReadItem</Permissions>
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/>
+  </Rule>
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Requirements>
+      <bt:Sets DefaultMinVersion="1.5">
+        <bt:Set Name="Mailbox"/>
+      </bt:Sets>
+    </Requirements>
+    <Hosts>
+      <Host xsi:type="MailHost">
+        <DesktopFormFactor>
+          <FunctionFile resid="Commands.Url"/>
+          <ExtensionPoint xsi:type="MessageReadCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="rwcReadGroup">
+                <Label resid="Group.Label"/>
+                <Control xsi:type="Button" id="rwcOpenPaneButton">
+                  <Label resid="Button.Label"/>
+                  <Supertip>
+                    <Title resid="Button.Label"/>
+                    <Description resid="Button.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="Taskpane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16" DefaultValue="https://localhost:3000/assets/icon-16.png"/>
+        <bt:Image id="Icon.32" DefaultValue="https://localhost:3000/assets/icon-32.png"/>
+        <bt:Image id="Icon.80" DefaultValue="https://localhost:3000/assets/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Commands.Url" DefaultValue="https://localhost:3000/commands.html"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/taskpane.html"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Group.Label" DefaultValue="ChatGPT"/>
+        <bt:String id="Button.Label" DefaultValue="Reply with ChatGPT"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Button.Tooltip" DefaultValue="Copy a reply prompt for ChatGPT, then turn its answer into a reply draft."/>
+      </bt:LongStrings>
+    </Resources>
+
+    <!-- Same definition again for Mailbox 1.5+ clients, adding pinning so the
+         panel can stay open while you move between emails. -->
+    <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
+      <Requirements>
+        <bt:Sets DefaultMinVersion="1.5">
+          <bt:Set Name="Mailbox"/>
+        </bt:Sets>
+      </Requirements>
+      <Hosts>
+        <Host xsi:type="MailHost">
+          <DesktopFormFactor>
+            <FunctionFile resid="Commands.Url"/>
+            <ExtensionPoint xsi:type="MessageReadCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="rwcReadGroup">
+                  <Label resid="Group.Label"/>
+                  <Control xsi:type="Button" id="rwcOpenPaneButton">
+                    <Label resid="Button.Label"/>
+                    <Supertip>
+                      <Title resid="Button.Label"/>
+                      <Description resid="Button.Tooltip"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16"/>
+                      <bt:Image size="32" resid="Icon.32"/>
+                      <bt:Image size="80" resid="Icon.80"/>
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="Taskpane.Url"/>
+                      <SupportsPinning>true</SupportsPinning>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+          </DesktopFormFactor>
+        </Host>
+      </Hosts>
+      <Resources>
+        <bt:Images>
+          <bt:Image id="Icon.16" DefaultValue="https://localhost:3000/assets/icon-16.png"/>
+          <bt:Image id="Icon.32" DefaultValue="https://localhost:3000/assets/icon-32.png"/>
+          <bt:Image id="Icon.80" DefaultValue="https://localhost:3000/assets/icon-80.png"/>
+        </bt:Images>
+        <bt:Urls>
+          <bt:Url id="Commands.Url" DefaultValue="https://localhost:3000/commands.html"/>
+          <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/taskpane.html"/>
+        </bt:Urls>
+        <bt:ShortStrings>
+          <bt:String id="Group.Label" DefaultValue="ChatGPT"/>
+          <bt:String id="Button.Label" DefaultValue="Reply with ChatGPT"/>
+        </bt:ShortStrings>
+        <bt:LongStrings>
+          <bt:String id="Button.Tooltip" DefaultValue="Copy a reply prompt for ChatGPT, then turn its answer into a reply draft."/>
+        </bt:LongStrings>
+      </Resources>
+    </VersionOverrides>
+  </VersionOverrides>
+</OfficeApp>

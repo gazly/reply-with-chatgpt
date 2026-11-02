@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+  <title>Reply with ChatGPT</title>
+  <link rel="stylesheet" href="taskpane.css">
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <script src="text-utils.js"></script>
+  <script src="taskpane.js" defer></script>
+</head>
+<body>
+  <main id="main">
+    <header class="top">
+      <h1>Reply with ChatGPT</h1>
+      <button id="settingsBtn" class="icon-btn" type="button" title="Settings" aria-label="Settings" aria-expanded="false">
+        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M11.3 1.6l.4 2.1c.5.2 1 .5 1.4.8l2-.7 1.3 2.3-1.6 1.4a6 6 0 010 1.6l1.6 1.4-1.3 2.3-2-.7c-.4.3-.9.6-1.4.8l-.4 2.1H8.7l-.4-2.1c-.5-.2-1-.5-1.4-.8l-2 .7-1.3-2.3 1.6-1.4a6 6 0 010-1.6L3.6 6.1l1.3-2.3 2 .7c.4-.3.9-.6 1.4-.8l.4-2.1h2.6zM10 7a3 3 0 100 6 3 3 0 000-6z"/></svg>
+      </button>
+    </header>
+
+    <!-- Main view -->
+    <section id="mainView">
+      <div class="email-card" id="emailCard">
+        <div class="row"><span class="label">From</span><span id="emailFrom" class="value">…</span></div>
+        <div class="row"><span class="label">Subject</span><span id="emailSubject" class="value">…</span></div>
+      </div>
+
+      <h2><span class="step">1</span> Ask ChatGPT</h2>
+      <div class="grid2">
+        <label>Tone
+          <select id="tone"></select>
+        </label>
+        <label>Language
+          <select id="language">
+            <option value="">Same as the email</option>
+            <option>English</option>
+            <option>Sinhala</option>
+            <option>Tamil</option>
+            <option>Hindi</option>
+            <option>Spanish</option>
+            <option>French</option>
+            <option>German</option>
+            <option>Arabic</option>
+            <option>Chinese</option>
+            <option>Japanese</option>
+          </select>
+        </label>
+      </div>
+      <label>Custom instruction <span class="hint">(optional)</span>
+        <textarea id="instruction" rows="2" placeholder="e.g. Say yes to Thursday, ask for the agenda"></textarea>
+      </label>
+      <button id="copyPromptBtn" class="primary" type="button">Copy prompt &amp; open ChatGPT</button>
+
+      <details id="promptDetails">
+        <summary>Show prompt</summary>
+        <textarea id="promptText" rows="8" readonly aria-label="Prompt for ChatGPT"></textarea>
+        <div class="btn-row">
+          <button id="selectCopyBtn" type="button">Select all &amp; copy</button>
+          <button id="openChatBtn" type="button">Open ChatGPT</button>
+        </div>
+      </details>
+
+      <h2><span class="step">2</span> Make the reply draft</h2>
+      <label for="reply">Paste ChatGPT's reply here</label>
+      <textarea id="reply" rows="9" placeholder="Copy ChatGPT's answer, click here, press ⌘V"></textarea>
+      <div class="btn-row">
+        <button id="pasteBtn" type="button">Paste from clipboard</button>
+        <div class="seg" role="radiogroup" aria-label="Reply type">
+          <label><input type="radio" name="replyMode" value="reply"><span>Reply</span></label>
+          <label><input type="radio" name="replyMode" value="replyAll"><span>Reply All</span></label>
+        </div>
+      </div>
+      <button id="draftBtn" class="primary" type="button">Create reply draft</button>
+      <p class="footnote">Opens a draft for you to review. Nothing is ever sent automatically.</p>
+    </section>
+
+    <!-- Settings view -->
+    <section id="settingsView" hidden>
+      <h2>Settings</h2>
+      <label>Prompt template
+        <textarea id="setTemplate" rows="12" spellcheck="false"></textarea>
+      </label>
+      <p class="hint small">Placeholders: {tone} {instruction} {language} {senderName} {senderEmail} {subject} {date} {to} {cc} {body}</p>
+      <button id="resetTemplateBtn" type="button" class="link">Reset template to default</button>
+      <div class="grid2">
+        <label>Default tone
+          <select id="setTone"></select>
+        </label>
+        <label>Default reply
+          <select id="setReplyMode">
+            <option value="reply">Reply</option>
+            <option value="replyAll">Reply All</option>
+          </select>
+        </label>
+      </div>
+      <label>Max email length (characters)
+        <input id="setMaxBody" type="number" min="500" max="50000" step="500">
+      </label>
+      <label class="check">
+        <input id="setMacApp" type="checkbox">
+        <span>I use the ChatGPT Mac app (don't open the browser)</span>
+      </label>
+      <div class="btn-row">
+        <button id="saveSettingsBtn" class="primary" type="button">Save</button>
+        <button id="cancelSettingsBtn" type="button">Cancel</button>
+      </div>
+    </section>
+
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </main>
+</body>
+</html>
