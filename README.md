@@ -32,7 +32,7 @@ mailbox, so add them again if you also use Outlook on the web.
 ### Google Gemini (free) - the default
 
 1. Go to <https://aistudio.google.com> and sign in with a Google account.
-2. Click **Get API key → Create API key**, and copy it (it starts with `AIza`).
+2. Click **Get API key → Create API key**, and copy it.
 3. Paste it into **Gemini API key** in Settings and click **Save**.
 
 - Free, with no card needed. The free tier has per-minute and daily request
