@@ -64,8 +64,8 @@ test("keeps the whole thread when asked", () => {
   assert.equal(T.cleanEmailBody(body, 6000, false).text, "Sounds good.");
 });
 
-test("Claude prompt writes as me and handles my own latest message", () => {
-  const p = T.buildClaudePrompt({
+test("AI prompt writes as me and handles my own latest message", () => {
+  const p = T.buildReplyPrompt({
     myName: "Muhammed Gazzaly", myEmail: "g@x.com", fromMe: true, replyAll: true,
     tone: "professional and clear", language: "the same language as the email",
     instruction: "Confirm Thursday", styleNotes: "UK spelling",

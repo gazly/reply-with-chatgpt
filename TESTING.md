@@ -27,7 +27,7 @@ Then check each item in **new Outlook for Mac** and in **Outlook on the web**.
 
 | # | Test | Expected |
 |---|---|---|
-| C1 | No API key saved, click *Write reply with Claude* | Settings open with "Add your Claude API key first". |
+| C1 | No API key saved, click *Write reply* | Settings open on the chosen AI with "Add your … API key first". |
 | C2 | Save a key, open a received email, *Write reply* | Text streams into the box within seconds; status "Reply ready ✓". Reply mode stays Reply. |
 | C3 | Open an email **you** sent last in a thread, *Write reply* | Panel shows "(you)", switches to Reply All; reply is a follow-up to the others, not to yourself. |
 | C4 | Long thread with several earlier messages | Reply refers to points from earlier in the thread, not only the newest message. |
@@ -35,3 +35,5 @@ Then check each item in **new Outlook for Mac** and in **Outlook on the web**.
 | C6 | Click *Stop* while it's writing | Writing stops; status "Stopped." |
 | C7 | Wrong key / no credit / Wi-Fi off | Clear message for each; nothing breaks. |
 | C8 | Switch model to Haiku 5.5 in Settings, write again | Works, faster. |
+| C9 | Settings → Gemini, save a Gemini key, *Write reply with Gemini* | Reply streams in; no "thinking" text appears in it. |
+| C10 | Use Gemini until the free limit is hit | "You've used up Gemini's free requests…" message. |

@@ -57,7 +57,7 @@
           <label><input type="radio" name="replyMode" value="replyAll"><span>Reply All</span></label>
         </div>
       </div>
-      <button id="writeBtn" class="primary" type="button">Write reply with Claude</button>
+      <button id="writeBtn" class="primary" type="button">Write reply</button>
 
       <details id="chatgptDetails" class="alt">
         <summary>Use ChatGPT instead</summary>
@@ -81,13 +81,30 @@
     <!-- Settings view -->
     <section id="settingsView" hidden>
       <h2>Settings</h2>
-      <label>Claude API key
-        <input id="setApiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
+      <label>AI that writes the reply
+        <select id="setProvider">
+          <option value="gemini">Google Gemini (free tier)</option>
+          <option value="claude">Claude (paid, a few cents per reply)</option>
+        </select>
       </label>
-      <p class="hint small">Get one at console.anthropic.com → API keys. It is saved on this device only.</p>
-      <label>Claude model
-        <select id="setModel"></select>
-      </label>
+      <div id="geminiSettings">
+        <label>Gemini API key
+          <input id="setGeminiKey" type="password" autocomplete="off" spellcheck="false" placeholder="AIza…">
+        </label>
+        <p class="hint small">Free at aistudio.google.com → Get API key. Saved on this device only. On the free tier Google may use what you send to improve its products.</p>
+        <label>Gemini model
+          <select id="setGeminiModel"></select>
+        </label>
+      </div>
+      <div id="claudeSettings">
+        <label>Claude API key
+          <input id="setApiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
+        </label>
+        <p class="hint small">Get one at console.anthropic.com → API keys. Saved on this device only.</p>
+        <label>Claude model
+          <select id="setModel"></select>
+        </label>
+      </div>
       <label>About you and how you write <span class="hint">(optional)</span>
         <textarea id="setStyleNotes" rows="3" placeholder="e.g. Co-founder at DAT, a martech agency in Colombo. Short, direct, friendly. UK spelling."></textarea>
       </label>

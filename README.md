@@ -1,13 +1,14 @@
 # Reply with AI (Outlook add-in for Mac)
 
 An Outlook add-in that reads the email thread you have open and writes your
-reply with **Claude**, as you. It shows up in the toolbar as **Reply with ChatGPT**.
+reply, as you, with **Google Gemini (free)** or **Claude (paid)**. It shows up in
+the toolbar as **Reply with ChatGPT**.
 
 How it works:
 
 1. Select an email and click **Reply with ChatGPT** in the toolbar. A side panel opens.
 2. Optionally pick a tone, or type what the reply should say ("confirm Thursday 12pm").
-3. Click **Write reply with Claude**. The reply appears in the panel in a few seconds.
+3. Click **Write reply**. The reply appears in the panel in a few seconds.
 4. Edit it if you like, then click **Create reply draft**. Outlook opens a normal
    reply with your signature and the quoted thread. Review it and send it yourself.
 
@@ -22,26 +23,39 @@ Good to know:
 - ChatGPT still works as a manual option: **Use ChatGPT instead** copies a prompt
   for you to paste into ChatGPT, and **Paste answer** brings the answer back.
 
-## Claude API key (one-time setup)
+## Choose the AI (one-time setup)
 
-Claude's API is separate from a Claude.ai or ChatGPT subscription and is paid per use.
+Click the **gear icon** in the panel and pick **AI that writes the reply**.
+Keys are saved only on that device (the panel's local storage), not in your
+mailbox, so add them again if you also use Outlook on the web.
 
-1. Go to <https://console.anthropic.com>, sign up, and add credit under
-   **Billing** (the minimum top-up is small; a few dollars lasts a long time).
-2. Go to **API keys → Create key**, and copy the key (it starts with `sk-ant-`).
-3. In the add-in panel click the **gear icon**, paste the key into
-   **Claude API key**, and click **Save**.
+### Google Gemini (free) - the default
 
-The key is saved only on that device (the panel's local storage), not in your
-mailbox, so add it again if you also use Outlook on the web.
+1. Go to <https://aistudio.google.com> and sign in with a Google account.
+2. Click **Get API key → Create API key**, and copy it (it starts with `AIza`).
+3. Paste it into **Gemini API key** in Settings and click **Save**.
 
-**Cost:** about 2–4 US cents per reply with Claude Opus 5.5 (the default) for a
-typical thread, less with Sonnet or Haiku (pick in Settings). Long threads cost more.
+- Free, with no card needed. The free tier has per-minute and daily request
+  limits (shown in AI Studio); if you hit one, the panel says so. Wait, or switch
+  to Gemini 3.5 Flash-Lite.
+- **On the free tier, Google may use what you send to improve its products, and
+  people may review it.** Don't use the free tier for confidential client email.
+  Turning on billing in AI Studio switches to the paid tier, where it isn't used.
 
-**Privacy:** when you click **Write reply**, the thread text, subject, names and
-email addresses are sent to Anthropic's API over HTTPS to write the reply. Nothing
-is sent until you click. Check your company's policy on sending client emails to
-an AI service. The add-in has no server of its own and no analytics.
+### Claude (paid)
+
+1. Go to <https://console.anthropic.com>, sign up, and add credit under **Billing**.
+2. Go to **API keys → Create key**, and copy it (it starts with `sk-ant-`).
+3. In Settings pick **Claude**, paste the key into **Claude API key**, and click **Save**.
+
+- About 2-4 US cents per reply with Claude Opus 5.5 (the default), less with
+  Sonnet or Haiku. Long threads cost more.
+- Anthropic doesn't train on API data by default.
+
+**Privacy (both):** only when you click **Write reply**, the thread text, subject,
+names and email addresses are sent over HTTPS to the AI provider you chose. Check
+your company's policy on sending client emails to an AI service. The add-in has no
+server of its own and no analytics.
 
 ## What's in this folder
 
@@ -181,9 +195,9 @@ page → **…** → **Remove**), then add the other.
 Click the gear icon in the panel. The API key stays on this device; everything
 else is saved with your mailbox (Outlook's roaming settings).
 
-- **Claude API key**: see "Claude API key" above.
-- **Claude model**: Opus 5.5 (best writing, default), Sonnet 5.5 (faster, cheaper)
-  or Haiku 5.5 (fastest, cheapest).
+- **AI that writes the reply**: Gemini (free) or Claude (paid), each with its own
+  API key and model: Gemini 3.8 Flash or 3.5 Flash-Lite; Claude Opus 5.5,
+  Sonnet 5.5 or Haiku 5.5.
 - **About you and how you write**: optional notes Claude follows every time, e.g.
   your role, company, and style ("short and direct, UK spelling").
 - **Read the full thread**: on by default. Off sends only the newest message
@@ -215,12 +229,14 @@ is cleared so a reply can't go to the wrong person.
 - Hosted: check `https://YOUR-SITE/taskpane.html` opens in a browser.
 - After changing files, quit and reopen Outlook so it doesn't use a cached copy.
 
-**Claude errors**
+**AI errors**
 - "API key isn't valid": paste the key again in Settings (no spaces).
-- "Out of credit": add credit at console.anthropic.com → Billing.
-- "Couldn't reach Claude": check your internet connection; some company networks
-  block api.anthropic.com.
-- "Claude declined": rephrase the instruction, try another model, or use ChatGPT.
+- Gemini "used up the free requests": wait a minute (or until the next day for the
+  daily limit, which resets at midnight Pacific time), or switch model.
+- Claude "out of credit": add credit at console.anthropic.com → Billing.
+- "Couldn't reach …": check your internet connection; some company networks block
+  generativelanguage.googleapis.com or api.anthropic.com.
+- "… declined": rephrase the instruction, switch AI in Settings, or use ChatGPT.
 
 **Copy or paste doesn't work (ChatGPT option)**
 - If the prompt can't be copied automatically, click **Select all & copy** (or click
@@ -233,8 +249,9 @@ is cleared so a reply can't go to the wrong person.
 
 ## Privacy
 
-- **Claude:** only when you click **Write reply**, the thread text, subject, names
-  and addresses are sent over HTTPS to Anthropic's API (`api.anthropic.com`).
+- **Gemini / Claude:** only when you click **Write reply**, the thread text, subject,
+  names and addresses are sent over HTTPS to Google (`generativelanguage.googleapis.com`)
+  or Anthropic (`api.anthropic.com`). Gemini's free tier may use it to improve Google's products.
 - **ChatGPT option:** the prompt goes only to your clipboard, then wherever you paste it.
 - No server of our own, no analytics. Settings live in your mailbox; the API key
   lives only on your device.

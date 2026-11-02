@@ -91,15 +91,15 @@
     return limitLength(body, maxChars);
   }
 
-  var CLAUDE_SYSTEM = [
+  var REPLY_SYSTEM = [
     "You draft email replies on behalf of {myName} <{myEmail}>. Write in the first person as {myName}.",
     "Read the whole thread to understand who said what, what was asked and what is still open, then reply to the latest message.",
     "Answer every question addressed to {myName}. Don't invent facts, dates, prices or commitments that aren't in the thread; where you need something you don't know, put a short placeholder in square brackets, such as [confirm time].",
     "Output only the reply body as plain text: no subject line, no signature block, no commentary before or after it. A greeting and a closing line such as \"Best regards,\" are fine, but don't write {myName}'s name under it, because Outlook adds the signature.",
   ].join("\n");
 
-  // Builds the system prompt and user message for Claude from the email context.
-  function buildClaudePrompt(c) {
+  // Builds the system prompt and user message for the AI model from the email context.
+  function buildReplyPrompt(c) {
     var me = { myName: c.myName || "the user", myEmail: c.myEmail || "" };
     var lines = [
       "Draft my reply to the email thread below.",
@@ -130,7 +130,7 @@
       c.body,
       "</thread>"
     );
-    return { system: fillTemplate(CLAUDE_SYSTEM, me), user: lines.join("\n") };
+    return { system: fillTemplate(REPLY_SYSTEM, me), user: lines.join("\n") };
   }
 
   // Replaces {name} placeholders; unknown placeholders are left as they are.
@@ -180,7 +180,7 @@
     stripQuotedHistory: stripQuotedHistory,
     limitLength: limitLength,
     cleanEmailBody: cleanEmailBody,
-    buildClaudePrompt: buildClaudePrompt,
+    buildReplyPrompt: buildReplyPrompt,
     fillTemplate: fillTemplate,
     escapeHtml: escapeHtml,
     tidyReplyText: tidyReplyText,

@@ -1,8 +1,8 @@
 /*
  * Reply with AI: task pane logic.
- * Claude writes the reply straight into the panel (the email thread is sent to
- * the Anthropic API with your own key). ChatGPT stays available as a manual
- * copy/paste option. It never sends email: it only opens a reply draft.
+ * Gemini or Claude writes the reply straight into the panel (the email thread is
+ * sent to that provider's API with your own key). ChatGPT stays available as a
+ * manual copy/paste option. It never sends email: it only opens a reply draft.
  */
 (function () {
   "use strict";
@@ -10,12 +10,19 @@
   var T = window.RWCText;
   var CHATGPT_URL = "https://chatgpt.com/";
   var CLAUDE_URL = "https://api.anthropic.com/v1/messages";
+  var GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/";
   var SETTINGS_KEY = "rwcSettings";
-  var API_KEY_STORE = "rwcClaudeKey"; // kept in this device's localStorage, not in the mailbox
+  // API keys are kept in this device's localStorage, not in the mailbox.
+  var KEY_STORES = { claude: "rwcClaudeKey", gemini: "rwcGeminiKey" };
+  var PROVIDER_NAMES = { claude: "Claude", gemini: "Gemini" };
   var MODELS = {
     "claude-opus-5-5": "Claude Opus 5.5 (best writing)",
     "claude-sonnet-5-5": "Claude Sonnet 5.5 (faster, cheaper)",
     "claude-haiku-5-5": "Claude Haiku 5.5 (fastest, cheapest)",
+  };
+  var GEMINI_MODELS = {
+    "gemini-3.8-flash": "Gemini 3.8 Flash (best free)",
+    "gemini-3.5-flash-lite": "Gemini 3.5 Flash-Lite (fastest)",
   };
   var DEFAULTS = {
     template: T.DEFAULT_TEMPLATE,
@@ -23,7 +30,9 @@
     replyMode: "reply",
     maxBody: 30000,
     useMacApp: false,
+    provider: "gemini",
     model: "claude-opus-5-5",
+    geminiModel: "gemini-3.8-flash",
     styleNotes: "",
     fullThread: true,
   };
@@ -32,7 +41,7 @@
   var email = null; // the email as read when the panel opened or the item changed
   var emailState = "loading"; // loading | ready | none | error
   var loadToken = 0;
-  var writing = null; // AbortController while Claude is writing
+  var writing = null; // AbortController while the AI is writing
   var els = {};
 
   // ---------- small helpers ----------
@@ -106,22 +115,36 @@
     fillSelect(select, names, value, DEFAULTS.tone);
   }
 
-  function readApiKey() {
+  function provider() {
+    return PROVIDER_NAMES[settings.provider] ? settings.provider : DEFAULTS.provider;
+  }
+
+  function readApiKey(which) {
     try {
-      return window.localStorage.getItem(API_KEY_STORE) || "";
+      return window.localStorage.getItem(KEY_STORES[which || provider()]) || "";
     } catch (err) {
       return "";
     }
   }
 
-  function writeApiKey(key) {
+  function writeApiKey(which, key) {
     try {
-      if (key) window.localStorage.setItem(API_KEY_STORE, key);
-      else window.localStorage.removeItem(API_KEY_STORE);
+      if (key) window.localStorage.setItem(KEY_STORES[which], key);
+      else window.localStorage.removeItem(KEY_STORES[which]);
       return true;
     } catch (err) {
       return false;
     }
+  }
+
+  function showProviderSettings() {
+    var p = els.setProvider.value;
+    els.geminiSettings.hidden = p !== "gemini";
+    els.claudeSettings.hidden = p !== "claude";
+  }
+
+  function updateWriteLabel() {
+    els.writeBtn.textContent = "Write reply with " + PROVIDER_NAMES[provider()];
   }
 
   // ---------- settings (roamingSettings + this device's API key) ----------
@@ -152,11 +175,16 @@
   function applyDefaultsToForm() {
     fillToneSelect(els.tone, settings.tone);
     setReplyMode(settings.replyMode);
+    updateWriteLabel();
   }
 
   function openSettings() {
-    els.setApiKey.value = readApiKey();
+    els.setProvider.value = provider();
+    els.setGeminiKey.value = readApiKey("gemini");
+    fillSelect(els.setGeminiModel, GEMINI_MODELS, settings.geminiModel, DEFAULTS.geminiModel);
+    els.setApiKey.value = readApiKey("claude");
     fillSelect(els.setModel, MODELS, settings.model, DEFAULTS.model);
+    showProviderSettings();
     els.setStyleNotes.value = settings.styleNotes || "";
     els.setFullThread.checked = !!settings.fullThread;
     els.setTemplate.value = settings.template;
@@ -187,16 +215,23 @@
       setStatus("The ChatGPT template needs {body} so ChatGPT sees the email.", "warn");
       return;
     }
-    var key = els.setApiKey.value.trim();
-    if (key && key.indexOf("sk-ant-") !== 0) {
+    var claudeKey = els.setApiKey.value.trim();
+    var geminiKey = els.setGeminiKey.value.trim();
+    if (claudeKey && claudeKey.indexOf("sk-ant-") !== 0) {
       setStatus("That doesn't look like a Claude API key (they start with sk-ant-).", "warn");
       return;
     }
-    if (!writeApiKey(key)) {
+    if (geminiKey && /\s/.test(geminiKey)) {
+      setStatus("The Gemini API key has a space in it. Paste it again.", "warn");
+      return;
+    }
+    if (!writeApiKey("claude", claudeKey) || !writeApiKey("gemini", geminiKey)) {
       setStatus("Couldn't save the API key on this device.", "err");
       return;
     }
     var next = {
+      provider: els.setProvider.value,
+      geminiModel: els.setGeminiModel.value,
       template: template,
       tone: els.setTone.value,
       replyMode: els.setReplyMode.value,
@@ -276,7 +311,8 @@
         };
         emailState = "ready";
         if (!email.rawBody.trim()) setStatus("This email has no text body, but you can still write a reply.", "warn");
-        else setStatus(readApiKey() ? "Ready. Click Write reply." : "Add your Claude API key in Settings (gear icon) to start.", "info");
+        else if (readApiKey()) setStatus("Ready. Click Write reply.", "info");
+        else setStatus("Add your " + PROVIDER_NAMES[provider()] + " API key in Settings (gear icon) to start.", "info");
       });
     } catch (err) {
       emailState = "error";
@@ -314,16 +350,19 @@
     };
   }
 
-  // ---------- Claude ----------
+  // ---------- AI providers (Claude, Gemini) ----------
 
-  function apiErrorMessage(status, bodyText) {
-    var detail = "";
+  function errorDetail(bodyText) {
     try {
       var parsed = JSON.parse(bodyText);
-      detail = (parsed.error && parsed.error.message) || "";
+      return (parsed.error && parsed.error.message) || "";
     } catch (err) {
-      detail = "";
+      return "";
     }
+  }
+
+  function claudeErrorMessage(status, bodyText) {
+    var detail = errorDetail(bodyText);
     if (status === 401) return "Your Claude API key isn't valid. Check it in Settings.";
     if (status === 403) return "This API key isn't allowed to use that model. " + detail;
     if (status === 429) return "Too many requests right now. Wait a minute and try again.";
@@ -334,8 +373,71 @@
     return "Claude returned an error" + (status ? " (" + status + ")" : "") + (detail ? ": " + detail : ".");
   }
 
-  // Streams a Messages API response, calling onText for each piece of reply text.
-  // Resolves with the stop reason.
+  function geminiErrorMessage(status, bodyText) {
+    var detail = errorDetail(bodyText);
+    if (/api key/i.test(detail) && (status === 400 || status === 401 || status === 403)) {
+      return "Your Gemini API key isn't valid. Check it in Settings.";
+    }
+    if (status === 429) {
+      return "You've used up Gemini's free requests for now. Wait a minute (or until tomorrow for the daily limit), or switch model in Settings.";
+    }
+    if (status === 503 || status === 500) return "Gemini is busy right now. Try again in a moment.";
+    if (status === 404) return "That Gemini model isn't available to your key. Pick another model in Settings.";
+    return "Gemini returned an error" + (status ? " (" + status + ")" : "") + (detail ? ": " + detail : ".");
+  }
+
+  // Reads a server-sent-events body, passing each event's parsed JSON data to onData.
+  function readSse(res, onData) {
+    var reader = res.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = "";
+
+    function handleEvent(chunk) {
+      var data = chunk
+        .split("\n")
+        .filter(function (line) { return line.indexOf("data:") === 0; })
+        .map(function (line) { return line.slice(5).trim(); })
+        .join("");
+      if (!data) return;
+      var event;
+      try {
+        event = JSON.parse(data);
+      } catch (err) {
+        return;
+      }
+      onData(event);
+    }
+
+    function pump() {
+      return reader.read().then(function (part) {
+        if (part.done) {
+          if (buffer.trim()) handleEvent(buffer);
+          return;
+        }
+        buffer += decoder.decode(part.value, { stream: true }).replace(/\r/g, "");
+        var events = buffer.split("\n\n");
+        buffer = events.pop();
+        events.forEach(handleEvent);
+        return pump();
+      });
+    }
+    return pump();
+  }
+
+  function postStream(url, headers, body, signal, errorMessage, onData) {
+    return fetch(url, { method: "POST", headers: headers, body: JSON.stringify(body), signal: signal })
+      .then(function (res) {
+        if (!res.ok) {
+          return res.text().then(function (text) {
+            throw new Error(errorMessage(res.status, text));
+          });
+        }
+        return readSse(res, onData);
+      });
+  }
+
+  // Each stream function calls onText with pieces of reply text and resolves with
+  // "refusal", "max_tokens" or another stop reason.
   function streamClaude(apiKey, model, prompt, signal, onText) {
     var body = {
       model: model,
@@ -357,56 +459,52 @@
       body.fallbacks = "default";
     }
 
-    return fetch(CLAUDE_URL, { method: "POST", headers: headers, body: JSON.stringify(body), signal: signal })
-      .then(function (res) {
-        if (!res.ok) {
-          return res.text().then(function (text) {
-            throw new Error(apiErrorMessage(res.status, text));
-          });
-        }
-        var reader = res.body.getReader();
-        var decoder = new TextDecoder();
-        var buffer = "";
-        var stopReason = null;
+    var stopReason = null;
+    return postStream(CLAUDE_URL, headers, body, signal, claudeErrorMessage, function (event) {
+      if (event.type === "content_block_delta" && event.delta && event.delta.type === "text_delta") {
+        onText(event.delta.text);
+      } else if (event.type === "message_delta" && event.delta && event.delta.stop_reason) {
+        stopReason = event.delta.stop_reason;
+      } else if (event.type === "error") {
+        throw new Error(claudeErrorMessage(0, JSON.stringify(event)));
+      }
+    }).then(function () {
+      return stopReason;
+    });
+  }
 
-        function handleEvent(chunk) {
-          var data = chunk
-            .split("\n")
-            .filter(function (line) { return line.indexOf("data:") === 0; })
-            .map(function (line) { return line.slice(5).trim(); })
-            .join("");
-          if (!data) return;
-          var event;
-          try {
-            event = JSON.parse(data);
-          } catch (err) {
-            return;
-          }
-          if (event.type === "content_block_delta" && event.delta && event.delta.type === "text_delta") {
-            onText(event.delta.text);
-          } else if (event.type === "message_delta" && event.delta && event.delta.stop_reason) {
-            stopReason = event.delta.stop_reason;
-          } else if (event.type === "error") {
-            throw new Error(apiErrorMessage(0, JSON.stringify(event)));
-          }
-        }
+  var GEMINI_BLOCKED = /^(SAFETY|BLOCKLIST|PROHIBITED_CONTENT|SPII|RECITATION|OTHER)$/;
 
-        function pump() {
-          return reader.read().then(function (part) {
-            if (part.done) return stopReason;
-            buffer += decoder.decode(part.value, { stream: true }).replace(/\r/g, "");
-            var events = buffer.split("\n\n");
-            buffer = events.pop();
-            events.forEach(handleEvent);
-            return pump();
-          });
-        }
-        return pump();
+  function streamGemini(apiKey, model, prompt, signal, onText) {
+    var body = {
+      systemInstruction: { parts: [{ text: prompt.system }] },
+      contents: [{ role: "user", parts: [{ text: prompt.user }] }],
+      generationConfig: { maxOutputTokens: 8192, thinkingConfig: { thinkingLevel: "LOW" } },
+    };
+    var headers = { "content-type": "application/json", "x-goog-api-key": apiKey };
+    var url = GEMINI_URL + encodeURIComponent(model) + ":streamGenerateContent?alt=sse";
+
+    var stopReason = null;
+    return postStream(url, headers, body, signal, geminiErrorMessage, function (event) {
+      if (event.error) throw new Error(geminiErrorMessage(event.error.code || 0, JSON.stringify(event)));
+      if (event.promptFeedback && event.promptFeedback.blockReason) stopReason = "refusal";
+      var candidate = event.candidates && event.candidates[0];
+      if (!candidate) return;
+      var parts = (candidate.content && candidate.content.parts) || [];
+      parts.forEach(function (part) {
+        if (part.text && !part.thought) onText(part.text);
       });
+      if (candidate.finishReason === "MAX_TOKENS") stopReason = "max_tokens";
+      else if (GEMINI_BLOCKED.test(candidate.finishReason || "")) stopReason = "refusal";
+      else if (candidate.finishReason) stopReason = candidate.finishReason;
+    }).then(function () {
+      return stopReason;
+    });
   }
 
   function setWritingUi(on) {
-    els.writeBtn.textContent = on ? "Stop" : "Write reply with Claude";
+    if (on) els.writeBtn.textContent = "Stop";
+    else updateWriteLabel();
     els.writeBtn.classList.toggle("stop", on);
     els.draftBtn.disabled = on;
   }
@@ -417,17 +515,19 @@
       return;
     }
     if (!requireEmail()) return;
-    var apiKey = readApiKey();
+    var which = provider();
+    var name = PROVIDER_NAMES[which];
+    var apiKey = readApiKey(which);
     if (!apiKey) {
       openSettings();
-      setStatus("Add your Claude API key first, then click Save.", "warn");
-      els.setApiKey.focus();
+      setStatus("Add your " + name + " API key first, then click Save.", "warn");
+      (which === "gemini" ? els.setGeminiKey : els.setApiKey).focus();
       return;
     }
 
     var ctx = promptContext();
     var all = replyMode() === "replyAll";
-    var prompt = T.buildClaudePrompt({
+    var prompt = T.buildReplyPrompt({
       myName: email.myName,
       myEmail: email.myEmail,
       fromMe: email.fromMe,
@@ -449,9 +549,9 @@
     var started = false;
     els.reply.value = "";
     setWritingUi(true);
-    setStatus("Claude is reading the thread…", "info");
+    setStatus(name + " is reading the thread…", "info");
 
-    streamClaude(apiKey, MODELS[settings.model] ? settings.model : DEFAULTS.model, prompt, controller.signal, function (text) {
+    function onText(text) {
       if (!started) {
         started = true;
         text = text.replace(/^\s+/, "");
@@ -459,16 +559,22 @@
       }
       els.reply.value += text;
       els.reply.scrollTop = els.reply.scrollHeight;
-    })
+    }
+
+    var run = which === "gemini"
+      ? streamGemini(apiKey, GEMINI_MODELS[settings.geminiModel] ? settings.geminiModel : DEFAULTS.geminiModel, prompt, controller.signal, onText)
+      : streamClaude(apiKey, MODELS[settings.model] ? settings.model : DEFAULTS.model, prompt, controller.signal, onText);
+
+    run
       .then(function (stopReason) {
         els.reply.value = els.reply.value.trim();
         var note = ctx.cleaned.truncated ? " (long thread shortened to fit the max length)" : "";
         if (stopReason === "refusal") {
-          setStatus("Claude declined to draft this one. Try changing the instruction, or use ChatGPT instead.", "warn");
+          setStatus(name + " declined to draft this one. Try changing the instruction, the AI in Settings, or use ChatGPT instead.", "warn");
         } else if (stopReason === "max_tokens") {
           setStatus("The reply was cut off because it got too long. Check the end before using it.", "warn");
         } else if (!els.reply.value) {
-          setStatus("Claude didn't return any text. Try again.", "warn");
+          setStatus(name + " didn't return any text. Try again.", "warn");
         } else {
           setStatus("Reply ready ✓ Edit it if you like, then click Create reply draft" + note + ".", "ok");
         }
@@ -477,7 +583,7 @@
         if (err && err.name === "AbortError") {
           setStatus("Stopped.", "info");
         } else if (err instanceof TypeError) {
-          setStatus("Couldn't reach Claude. Check your internet connection and try again.", "err");
+          setStatus("Couldn't reach " + name + ". Check your internet connection and try again.", "err");
         } else {
           setStatus(err && err.message ? err.message : "Something went wrong while writing.", "err");
         }
@@ -679,6 +785,7 @@
       "main", "mainView", "settingsView", "emailFrom", "emailSubject", "tone", "language",
       "instruction", "writeBtn", "copyPromptBtn", "promptText", "selectCopyBtn", "openChatBtn",
       "reply", "pasteBtn", "draftBtn", "status", "settingsBtn", "setApiKey", "setModel",
+      "setProvider", "geminiSettings", "claudeSettings", "setGeminiKey", "setGeminiModel",
       "setStyleNotes", "setFullThread", "setTemplate", "resetTemplateBtn", "setTone",
       "setReplyMode", "setMaxBody", "setMacApp", "saveSettingsBtn", "cancelSettingsBtn",
     ].forEach(function (id) {
@@ -698,6 +805,7 @@
       if (els.settingsView.hidden) openSettings();
       else closeSettings();
     }));
+    els.setProvider.addEventListener("change", safe(showProviderSettings));
     els.cancelSettingsBtn.addEventListener("click", safe(closeSettings));
     els.saveSettingsBtn.addEventListener("click", safe(onSaveSettings));
     els.resetTemplateBtn.addEventListener("click", safe(function () {
