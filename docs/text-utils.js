@@ -83,8 +83,54 @@
     return { text: cut.trimEnd() + "\n[… email shortened]", truncated: true };
   }
 
-  function cleanEmailBody(text, maxChars) {
-    return limitLength(stripQuotedHistory(text), maxChars);
+  // keepHistory: send the whole thread (only tidy blank lines) instead of just the newest message.
+  function cleanEmailBody(text, maxChars, keepHistory) {
+    var body = keepHistory
+      ? normalizeNewlines(text).replace(/[ \t ]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim()
+      : stripQuotedHistory(text);
+    return limitLength(body, maxChars);
+  }
+
+  var CLAUDE_SYSTEM = [
+    "You draft email replies on behalf of {myName} <{myEmail}>. Write in the first person as {myName}.",
+    "Read the whole thread to understand who said what, what was asked and what is still open, then reply to the latest message.",
+    "Answer every question addressed to {myName}. Don't invent facts, dates, prices or commitments that aren't in the thread; where you need something you don't know, put a short placeholder in square brackets, such as [confirm time].",
+    "Output only the reply body as plain text: no subject line, no signature block, no commentary before or after it. A greeting and a closing line such as \"Best regards,\" are fine, but don't write {myName}'s name under it, because Outlook adds the signature.",
+  ].join("\n");
+
+  // Builds the system prompt and user message for Claude from the email context.
+  function buildClaudePrompt(c) {
+    var me = { myName: c.myName || "the user", myEmail: c.myEmail || "" };
+    var lines = [
+      "Draft my reply to the email thread below.",
+      "Tone: " + c.tone + ".",
+      "Language: " + c.language + ".",
+    ];
+    if (c.instruction) lines.push("What I want to say: " + c.instruction);
+    if (c.fromMe) {
+      lines.push(
+        "The latest message was sent by me, so write a follow-up from me to the other people on the thread, not a reply to myself."
+      );
+    }
+    lines.push(
+      c.replyAll
+        ? "This goes to everyone on the thread (Reply All): " + [c.senderLine, c.to, c.cc].filter(Boolean).join(", ") + "."
+        : "This goes only to " + c.senderLine + "."
+    );
+    if (c.styleNotes) lines.push("About me and how I write: " + c.styleNotes);
+    lines.push(
+      "",
+      "<thread>",
+      "Subject: " + c.subject,
+      "Latest message from: " + c.senderLine,
+      "To: " + (c.to || "-"),
+      "Cc: " + (c.cc || "-"),
+      "Date: " + (c.date || "-"),
+      "",
+      c.body,
+      "</thread>"
+    );
+    return { system: fillTemplate(CLAUDE_SYSTEM, me), user: lines.join("\n") };
   }
 
   // Replaces {name} placeholders; unknown placeholders are left as they are.
@@ -134,6 +180,7 @@
     stripQuotedHistory: stripQuotedHistory,
     limitLength: limitLength,
     cleanEmailBody: cleanEmailBody,
+    buildClaudePrompt: buildClaudePrompt,
     fillTemplate: fillTemplate,
     escapeHtml: escapeHtml,
     tidyReplyText: tidyReplyText,

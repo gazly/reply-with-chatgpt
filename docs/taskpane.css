@@ -84,7 +84,7 @@ label { display: block; margin-bottom: 8px; color: var(--text); }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
-select, textarea, input[type="number"] {
+select, textarea, input[type="number"], input[type="password"] {
   display: block; width: 100%; margin-top: 3px;
   font: inherit; color: var(--text); background: var(--bg);
   border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px;
@@ -113,7 +113,8 @@ button:disabled { opacity: 0.55; cursor: default; }
 
 .btn-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
 
-.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-left: auto; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.seg-row { display: flex; align-items: center; justify-content: space-between; margin: 2px 0 6px; }
 .seg label { margin: 0; }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }
 .seg span { display: block; padding: 5px 9px; cursor: pointer; }
@@ -124,6 +125,9 @@ button:disabled { opacity: 0.55; cursor: default; }
 .check input { margin-top: 3px; }
 
 details { margin-top: 8px; }
+details.alt { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 10px 0; }
+details.alt[open] > summary { margin-bottom: 6px; }
+details.alt > button { width: 100%; }
 summary { cursor: pointer; color: var(--muted); }
 details textarea { margin-top: 6px; }
 
@@ -132,3 +136,4 @@ details textarea { margin-top: 6px; }
 .status.warn { color: var(--warn); }
 .status.err { color: var(--err); }
 .status.info { color: var(--muted); }
+button.primary.stop { background: var(--surface); color: var(--text); border-color: var(--border); }

@@ -22,3 +22,16 @@ Then check each item in **new Outlook for Mac** and in **Outlook on the web**.
 | 15 | Open the panel on a meeting invite or with nothing selected | Friendly message, no error. |
 | 16 | Count clicks: select email → button → Copy prompt → (paste/copy in ChatGPT) → paste → Create reply draft | 3 clicks in the panel plus one paste each way. |
 | 17 | Network: Safari Web Inspector (or browser dev tools on the web) → Network tab | Only the add-in's own files and `appsforoffice.microsoft.com/…/office.js`. |
+
+## Claude
+
+| # | Test | Expected |
+|---|---|---|
+| C1 | No API key saved, click *Write reply with Claude* | Settings open with "Add your Claude API key first". |
+| C2 | Save a key, open a received email, *Write reply* | Text streams into the box within seconds; status "Reply ready ✓". Reply mode stays Reply. |
+| C3 | Open an email **you** sent last in a thread, *Write reply* | Panel shows "(you)", switches to Reply All; reply is a follow-up to the others, not to yourself. |
+| C4 | Long thread with several earlier messages | Reply refers to points from earlier in the thread, not only the newest message. |
+| C5 | Type an instruction ("confirm Thursday 12pm") | Reply says that; unknown facts appear as `[placeholders]`. |
+| C6 | Click *Stop* while it's writing | Writing stops; status "Stopped." |
+| C7 | Wrong key / no credit / Wi-Fi off | Clear message for each; nothing breaks. |
+| C8 | Switch model to Haiku 5.5 in Settings, write again | Works, faster. |

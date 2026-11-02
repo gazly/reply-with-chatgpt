@@ -1,26 +1,38 @@
 /*
- * Reply with ChatGPT: task pane logic.
- * Everything runs inside this panel. The only things it opens are chatgpt.com
- * (in your browser, for you) and Outlook's own reply form. It never sends email.
+ * Reply with AI: task pane logic.
+ * Claude writes the reply straight into the panel (the email thread is sent to
+ * the Anthropic API with your own key). ChatGPT stays available as a manual
+ * copy/paste option. It never sends email: it only opens a reply draft.
  */
 (function () {
   "use strict";
 
   var T = window.RWCText;
   var CHATGPT_URL = "https://chatgpt.com/";
+  var CLAUDE_URL = "https://api.anthropic.com/v1/messages";
   var SETTINGS_KEY = "rwcSettings";
+  var API_KEY_STORE = "rwcClaudeKey"; // kept in this device's localStorage, not in the mailbox
+  var MODELS = {
+    "claude-opus-5-5": "Claude Opus 5.5 (best writing)",
+    "claude-sonnet-5-5": "Claude Sonnet 5.5 (faster, cheaper)",
+    "claude-haiku-5-5": "Claude Haiku 5.5 (fastest, cheapest)",
+  };
   var DEFAULTS = {
     template: T.DEFAULT_TEMPLATE,
     tone: "Professional",
     replyMode: "reply",
-    maxBody: 6000,
+    maxBody: 30000,
     useMacApp: false,
+    model: "claude-opus-5-5",
+    styleNotes: "",
+    fullThread: true,
   };
 
   var settings = Object.assign({}, DEFAULTS);
   var email = null; // the email as read when the panel opened or the item changed
   var emailState = "loading"; // loading | ready | none | error
   var loadToken = 0;
+  var writing = null; // AbortController while Claude is writing
   var els = {};
 
   // ---------- small helpers ----------
@@ -75,18 +87,44 @@
     if (radio) radio.checked = true;
   }
 
-  function fillToneSelect(select, value) {
+  function fillSelect(select, options, value, fallback) {
     select.innerHTML = "";
-    Object.keys(T.TONES).forEach(function (name) {
+    Object.keys(options).forEach(function (key) {
       var opt = document.createElement("option");
-      opt.value = name;
-      opt.textContent = name;
+      opt.value = key;
+      opt.textContent = options[key];
       select.appendChild(opt);
     });
-    select.value = T.TONES[value] ? value : DEFAULTS.tone;
+    select.value = options[value] ? value : fallback;
   }
 
-  // ---------- settings (roamingSettings) ----------
+  function fillToneSelect(select, value) {
+    var names = {};
+    Object.keys(T.TONES).forEach(function (name) {
+      names[name] = name;
+    });
+    fillSelect(select, names, value, DEFAULTS.tone);
+  }
+
+  function readApiKey() {
+    try {
+      return window.localStorage.getItem(API_KEY_STORE) || "";
+    } catch (err) {
+      return "";
+    }
+  }
+
+  function writeApiKey(key) {
+    try {
+      if (key) window.localStorage.setItem(API_KEY_STORE, key);
+      else window.localStorage.removeItem(API_KEY_STORE);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  // ---------- settings (roamingSettings + this device's API key) ----------
 
   function loadSettings() {
     try {
@@ -117,6 +155,10 @@
   }
 
   function openSettings() {
+    els.setApiKey.value = readApiKey();
+    fillSelect(els.setModel, MODELS, settings.model, DEFAULTS.model);
+    els.setStyleNotes.value = settings.styleNotes || "";
+    els.setFullThread.checked = !!settings.fullThread;
     els.setTemplate.value = settings.template;
     fillToneSelect(els.setTone, settings.tone);
     els.setReplyMode.value = settings.replyMode === "replyAll" ? "replyAll" : "reply";
@@ -136,13 +178,22 @@
 
   function onSaveSettings() {
     var max = parseInt(els.setMaxBody.value, 10);
-    if (!(max >= 500 && max <= 50000)) {
-      setStatus("Max email length must be between 500 and 50000.", "warn");
+    if (!(max >= 500 && max <= 200000)) {
+      setStatus("Max email length must be between 500 and 200000.", "warn");
       return;
     }
     var template = els.setTemplate.value.trim() ? els.setTemplate.value : T.DEFAULT_TEMPLATE;
     if (template.indexOf("{body}") === -1) {
-      setStatus("The template needs {body} so ChatGPT sees the email.", "warn");
+      setStatus("The ChatGPT template needs {body} so ChatGPT sees the email.", "warn");
+      return;
+    }
+    var key = els.setApiKey.value.trim();
+    if (key && key.indexOf("sk-ant-") !== 0) {
+      setStatus("That doesn't look like a Claude API key (they start with sk-ant-).", "warn");
+      return;
+    }
+    if (!writeApiKey(key)) {
+      setStatus("Couldn't save the API key on this device.", "err");
       return;
     }
     var next = {
@@ -151,12 +202,16 @@
       replyMode: els.setReplyMode.value,
       maxBody: max,
       useMacApp: els.setMacApp.checked,
+      model: els.setModel.value,
+      styleNotes: els.setStyleNotes.value.trim(),
+      fullThread: els.setFullThread.checked,
     };
     els.saveSettingsBtn.disabled = true;
     saveSettings(next, function (ok, message) {
       els.saveSettingsBtn.disabled = false;
       if (ok) {
         applyDefaultsToForm();
+        if (email && email.fromMe) setReplyMode("replyAll");
         closeSettings();
         setStatus("Settings saved ✓", "ok");
       } else {
@@ -186,10 +241,15 @@
     }
 
     var from = item.from || item.sender || {};
-    els.emailFrom.textContent = formatPerson(from) || "(unknown sender)";
+    var me = mailbox().userProfile || {};
+    var fromMe = !!(from.emailAddress && me.emailAddress &&
+      from.emailAddress.toLowerCase() === me.emailAddress.toLowerCase());
+    els.emailFrom.textContent = (formatPerson(from) || "(unknown sender)") + (fromMe ? " (you)" : "");
     els.emailFrom.title = formatPerson(from);
     els.emailSubject.textContent = item.subject || "(no subject)";
     els.emailSubject.title = item.subject || "";
+    // Replying to your own message only makes sense as a follow-up to everyone on it.
+    setReplyMode(fromMe ? "replyAll" : settings.replyMode);
     emailState = "loading";
     setStatus("Reading the email…", "info");
 
@@ -204,6 +264,10 @@
         email = {
           senderName: from.displayName || from.emailAddress || "",
           senderEmail: from.emailAddress || "",
+          senderLine: formatPerson(from),
+          fromMe: fromMe,
+          myName: me.displayName || "",
+          myEmail: me.emailAddress || "",
           to: (item.to || []).map(formatPerson).join(", "),
           cc: (item.cc || []).map(formatPerson).join(", "),
           subject: item.subject || "",
@@ -211,8 +275,8 @@
           rawBody: result.value || "",
         };
         emailState = "ready";
-        if (!email.rawBody.trim()) setStatus("This email has no text body, but you can still ask ChatGPT.", "warn");
-        else setStatus("Ready. Choose a tone, then copy the prompt.", "info");
+        if (!email.rawBody.trim()) setStatus("This email has no text body, but you can still write a reply.", "warn");
+        else setStatus(readApiKey() ? "Ready. Click Write reply." : "Add your Claude API key in Settings (gear icon) to start.", "info");
       });
     } catch (err) {
       emailState = "error";
@@ -222,30 +286,225 @@
 
   function onItemChanged() {
     // Pinned panel: a different email was selected. Clear the old reply so it can't go to the wrong person.
+    if (writing) writing.abort();
     els.reply.value = "";
     els.promptText.value = "";
-    els.promptDetails.open = false;
     loadEmail();
   }
 
-  // ---------- step 1: prompt ----------
+  function requireEmail() {
+    if (emailState === "loading") {
+      setStatus("Still reading the email, try again in a moment.", "info");
+      return false;
+    }
+    if (emailState !== "ready" || !email) {
+      setStatus("No readable email selected. Select an email first.", "warn");
+      return false;
+    }
+    return true;
+  }
 
-  function buildPrompt() {
-    var cleaned = T.cleanEmailBody(email.rawBody, settings.maxBody);
-    var instruction = els.instruction.value.trim();
-    var prompt = T.fillTemplate(settings.template, {
+  function promptContext() {
+    var cleaned = T.cleanEmailBody(email.rawBody, settings.maxBody, settings.fullThread);
+    return {
+      cleaned: cleaned,
       tone: T.TONES[els.tone.value] || els.tone.value,
-      instruction: instruction || "none",
       language: els.language.value || "the same language as the email",
+      instruction: els.instruction.value.trim(),
+    };
+  }
+
+  // ---------- Claude ----------
+
+  function apiErrorMessage(status, bodyText) {
+    var detail = "";
+    try {
+      var parsed = JSON.parse(bodyText);
+      detail = (parsed.error && parsed.error.message) || "";
+    } catch (err) {
+      detail = "";
+    }
+    if (status === 401) return "Your Claude API key isn't valid. Check it in Settings.";
+    if (status === 403) return "This API key isn't allowed to use that model. " + detail;
+    if (status === 429) return "Too many requests right now. Wait a minute and try again.";
+    if (status === 529 || status === 503) return "Claude is busy right now. Try again in a moment.";
+    if (/credit balance/i.test(detail)) {
+      return "Your Anthropic account is out of credit. Add credit at console.anthropic.com → Billing.";
+    }
+    return "Claude returned an error" + (status ? " (" + status + ")" : "") + (detail ? ": " + detail : ".");
+  }
+
+  // Streams a Messages API response, calling onText for each piece of reply text.
+  // Resolves with the stop reason.
+  function streamClaude(apiKey, model, prompt, signal, onText) {
+    var body = {
+      model: model,
+      max_tokens: 16000,
+      stream: true,
+      output_config: { effort: "medium" },
+      system: prompt.system,
+      messages: [{ role: "user", content: prompt.user }],
+    };
+    var headers = {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2026-10-21",
+      "anthropic-dangerous-direct-browser-access": "true",
+    };
+    // If a safety check declines the request, let the API retry it on its recommended model.
+    if (model !== "claude-haiku-5-5") {
+      headers["anthropic-beta"] = "server-side-fallback-2026-07-01";
+      body.fallbacks = "default";
+    }
+
+    return fetch(CLAUDE_URL, { method: "POST", headers: headers, body: JSON.stringify(body), signal: signal })
+      .then(function (res) {
+        if (!res.ok) {
+          return res.text().then(function (text) {
+            throw new Error(apiErrorMessage(res.status, text));
+          });
+        }
+        var reader = res.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = "";
+        var stopReason = null;
+
+        function handleEvent(chunk) {
+          var data = chunk
+            .split("\n")
+            .filter(function (line) { return line.indexOf("data:") === 0; })
+            .map(function (line) { return line.slice(5).trim(); })
+            .join("");
+          if (!data) return;
+          var event;
+          try {
+            event = JSON.parse(data);
+          } catch (err) {
+            return;
+          }
+          if (event.type === "content_block_delta" && event.delta && event.delta.type === "text_delta") {
+            onText(event.delta.text);
+          } else if (event.type === "message_delta" && event.delta && event.delta.stop_reason) {
+            stopReason = event.delta.stop_reason;
+          } else if (event.type === "error") {
+            throw new Error(apiErrorMessage(0, JSON.stringify(event)));
+          }
+        }
+
+        function pump() {
+          return reader.read().then(function (part) {
+            if (part.done) return stopReason;
+            buffer += decoder.decode(part.value, { stream: true }).replace(/\r/g, "");
+            var events = buffer.split("\n\n");
+            buffer = events.pop();
+            events.forEach(handleEvent);
+            return pump();
+          });
+        }
+        return pump();
+      });
+  }
+
+  function setWritingUi(on) {
+    els.writeBtn.textContent = on ? "Stop" : "Write reply with Claude";
+    els.writeBtn.classList.toggle("stop", on);
+    els.draftBtn.disabled = on;
+  }
+
+  function onWrite() {
+    if (writing) {
+      writing.abort();
+      return;
+    }
+    if (!requireEmail()) return;
+    var apiKey = readApiKey();
+    if (!apiKey) {
+      openSettings();
+      setStatus("Add your Claude API key first, then click Save.", "warn");
+      els.setApiKey.focus();
+      return;
+    }
+
+    var ctx = promptContext();
+    var all = replyMode() === "replyAll";
+    var prompt = T.buildClaudePrompt({
+      myName: email.myName,
+      myEmail: email.myEmail,
+      fromMe: email.fromMe,
+      replyAll: all,
+      tone: ctx.tone,
+      language: ctx.language,
+      instruction: ctx.instruction,
+      styleNotes: settings.styleNotes,
+      subject: email.subject,
+      senderLine: email.senderLine,
+      to: email.to,
+      cc: email.cc,
+      date: email.date,
+      body: ctx.cleaned.text,
+    });
+
+    var controller = new AbortController();
+    writing = controller;
+    var started = false;
+    els.reply.value = "";
+    setWritingUi(true);
+    setStatus("Claude is reading the thread…", "info");
+
+    streamClaude(apiKey, MODELS[settings.model] ? settings.model : DEFAULTS.model, prompt, controller.signal, function (text) {
+      if (!started) {
+        started = true;
+        text = text.replace(/^\s+/, "");
+        setStatus("Writing…", "info");
+      }
+      els.reply.value += text;
+      els.reply.scrollTop = els.reply.scrollHeight;
+    })
+      .then(function (stopReason) {
+        els.reply.value = els.reply.value.trim();
+        var note = ctx.cleaned.truncated ? " (long thread shortened to fit the max length)" : "";
+        if (stopReason === "refusal") {
+          setStatus("Claude declined to draft this one. Try changing the instruction, or use ChatGPT instead.", "warn");
+        } else if (stopReason === "max_tokens") {
+          setStatus("The reply was cut off because it got too long. Check the end before using it.", "warn");
+        } else if (!els.reply.value) {
+          setStatus("Claude didn't return any text. Try again.", "warn");
+        } else {
+          setStatus("Reply ready ✓ Edit it if you like, then click Create reply draft" + note + ".", "ok");
+        }
+      })
+      .catch(function (err) {
+        if (err && err.name === "AbortError") {
+          setStatus("Stopped.", "info");
+        } else if (err instanceof TypeError) {
+          setStatus("Couldn't reach Claude. Check your internet connection and try again.", "err");
+        } else {
+          setStatus(err && err.message ? err.message : "Something went wrong while writing.", "err");
+        }
+      })
+      .then(function () {
+        if (writing === controller) writing = null;
+        setWritingUi(false);
+      });
+  }
+
+  // ---------- ChatGPT (manual copy/paste) ----------
+
+  function buildChatGPTPrompt() {
+    var ctx = promptContext();
+    var text = T.fillTemplate(settings.template, {
+      tone: ctx.tone,
+      instruction: ctx.instruction || "none",
+      language: ctx.language,
       senderName: email.senderName,
       senderEmail: email.senderEmail,
       subject: email.subject,
       date: email.date,
       to: email.to,
       cc: email.cc,
-      body: cleaned.text,
+      body: ctx.cleaned.text,
     });
-    return { text: prompt, truncated: cleaned.truncated };
+    return { text: text, truncated: ctx.cleaned.truncated };
   }
 
   // execCommand runs synchronously, so it stays inside the click (which WebKit
@@ -297,47 +556,32 @@
     window.open(CHATGPT_URL, "_blank", "noopener");
   }
 
-  function showManualCopy(message) {
-    els.promptDetails.open = true;
-    els.promptText.focus();
-    els.promptText.select();
-    setStatus(message, "warn");
-  }
-
   function onCopyPrompt() {
-    if (emailState === "loading") {
-      setStatus("Still reading the email, try again in a moment.", "info");
-      return;
-    }
-    if (emailState !== "ready" || !email) {
-      setStatus("No readable email selected. Select an email first.", "warn");
-      return;
-    }
-    var prompt = buildPrompt();
+    if (!requireEmail()) return;
+    var prompt = buildChatGPTPrompt();
     els.promptText.value = prompt.text;
     var note = prompt.truncated ? " (long email shortened)" : "";
 
     copyText(prompt.text).then(function (copied) {
       if (!copied) {
-        showManualCopy("Couldn't copy automatically. Click \"Select all & copy\" or press ⌘C, then open ChatGPT.");
+        els.promptText.focus();
+        els.promptText.select();
+        setStatus("Couldn't copy automatically. Click \"Select all & copy\" or press ⌘C, then open ChatGPT.", "warn");
         return;
       }
       if (settings.useMacApp) {
         setStatus("Prompt copied ✓ Paste it into ChatGPT (⌘V)" + note, "ok");
       } else {
         openChatGPT();
-        setStatus("Prompt copied ✓ Paste it into ChatGPT (⌘V), then copy its answer back here" + note, "ok");
+        setStatus("Prompt copied ✓ Paste it into ChatGPT (⌘V), then paste its answer below" + note, "ok");
       }
     });
   }
 
   function onSelectAndCopy() {
     if (!els.promptText.value) {
-      if (emailState === "ready" && email) els.promptText.value = buildPrompt().text;
-      else {
-        setStatus("No readable email selected.", "warn");
-        return;
-      }
+      if (!requireEmail()) return;
+      els.promptText.value = buildChatGPTPrompt().text;
     }
     els.promptText.focus();
     els.promptText.select();
@@ -350,12 +594,10 @@
     setStatus(ok ? "Prompt copied ✓" : "Text selected. Press ⌘C to copy it.", ok ? "ok" : "warn");
   }
 
-  // ---------- step 2: reply draft ----------
-
   function onPaste() {
     if (!navigator.clipboard || !navigator.clipboard.readText) {
       els.reply.focus();
-      setStatus("Click in the box and press ⌘V to paste.", "info");
+      setStatus("Click in the reply box and press ⌘V to paste.", "info");
       return;
     }
     var p;
@@ -375,16 +617,18 @@
       },
       function () {
         els.reply.focus();
-        setStatus("Pasting is blocked here. Click in the box and press ⌘V.", "info");
+        setStatus("Pasting is blocked here. Click in the reply box and press ⌘V.", "info");
       }
     );
   }
+
+  // ---------- reply draft ----------
 
   function onCreateDraft() {
     var text = els.reply.value;
     if (!text.trim()) {
       els.reply.focus();
-      setStatus("Paste ChatGPT's reply into the box first.", "warn");
+      setStatus("Write the reply first (or paste one into the box).", "warn");
       return;
     }
     var item = currentItem();
@@ -433,13 +677,15 @@
   function bind() {
     [
       "main", "mainView", "settingsView", "emailFrom", "emailSubject", "tone", "language",
-      "instruction", "copyPromptBtn", "promptDetails", "promptText", "selectCopyBtn", "openChatBtn",
-      "reply", "pasteBtn", "draftBtn", "status", "settingsBtn", "setTemplate", "resetTemplateBtn",
-      "setTone", "setReplyMode", "setMaxBody", "setMacApp", "saveSettingsBtn", "cancelSettingsBtn",
+      "instruction", "writeBtn", "copyPromptBtn", "promptText", "selectCopyBtn", "openChatBtn",
+      "reply", "pasteBtn", "draftBtn", "status", "settingsBtn", "setApiKey", "setModel",
+      "setStyleNotes", "setFullThread", "setTemplate", "resetTemplateBtn", "setTone",
+      "setReplyMode", "setMaxBody", "setMacApp", "saveSettingsBtn", "cancelSettingsBtn",
     ].forEach(function (id) {
       els[id] = $(id);
     });
 
+    els.writeBtn.addEventListener("click", safe(onWrite));
     els.copyPromptBtn.addEventListener("click", safe(onCopyPrompt));
     els.selectCopyBtn.addEventListener("click", safe(onSelectAndCopy));
     els.openChatBtn.addEventListener("click", safe(function () {

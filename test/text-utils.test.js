@@ -57,3 +57,24 @@ test("drops a stray Subject line and code fence from ChatGPT's answer", () => {
   assert.equal(T.tidyReplyText("Subject: Re: Meet\n\nHello"), "Hello");
   assert.equal(T.tidyReplyText("```\nHello\n```"), "Hello");
 });
+
+test("keeps the whole thread when asked", () => {
+  const body = "Sounds good.\n\nOn Mon, 2 Nov 2026 at 09:00, Bob <b@x.com> wrote:\n> Can we meet?";
+  assert.equal(T.cleanEmailBody(body, 6000, true).text, body);
+  assert.equal(T.cleanEmailBody(body, 6000, false).text, "Sounds good.");
+});
+
+test("Claude prompt writes as me and handles my own latest message", () => {
+  const p = T.buildClaudePrompt({
+    myName: "Muhammed Gazzaly", myEmail: "g@x.com", fromMe: true, replyAll: true,
+    tone: "professional and clear", language: "the same language as the email",
+    instruction: "Confirm Thursday", styleNotes: "UK spelling",
+    subject: "Demo", senderLine: "Muhammed Gazzaly <g@x.com>", to: "Harshit <h@y.com>", cc: "",
+    date: "today", body: "Thread text",
+  });
+  assert.match(p.system, /on behalf of Muhammed Gazzaly <g@x\.com>/);
+  assert.match(p.user, /latest message was sent by me/);
+  assert.match(p.user, /Reply All\): Muhammed Gazzaly <g@x\.com>, Harshit <h@y\.com>\./);
+  assert.match(p.user, /What I want to say: Confirm Thursday/);
+  assert.match(p.user, /<thread>[\s\S]*Thread text\n<\/thread>$/);
+});
